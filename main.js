@@ -8,16 +8,24 @@ class OrbitDodger {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.scoreNode = document.querySelector("#orbitScore");
+    this.levelNode = document.querySelector("#orbitLevel");
     this.nearMissNode = document.querySelector("#nearMisses");
+    this.streakNode = document.querySelector("#orbStreak");
     this.statusNode = document.querySelector("#orbitStatus");
+    this.pauseButton = document.querySelector("#pauseGame");
     this.restartButton = document.querySelector("#restartGame");
 
+    this.pauseButton.addEventListener("click", () => this.togglePause());
     this.restartButton.addEventListener("click", () => this.reset());
     this.canvas.addEventListener("click", () => this.switchOrbit());
     window.addEventListener("keydown", (event) => {
       if (event.code === "Space") {
         event.preventDefault();
         this.switchOrbit();
+      } else if (event.code === "KeyP") {
+        this.togglePause();
+      } else if (event.code === "KeyH") {
+        this.showHelp = !this.showHelp;
       }
     });
 
@@ -31,14 +39,23 @@ class OrbitDodger {
     this.orbitIndex = 0;
     this.orbitRadii = [88, 132];
     this.score = 0;
+    this.level = 1;
     this.nearMisses = 0;
+    this.orbStreak = 0;
     this.spawnTimer = 0;
     this.orbTimer = 1.2;
     this.asteroids = [];
     this.orbs = [];
+    this.particles = [];
+    this.impactFlash = 0;
+    this.nearMissPulse = 0;
+    this.orbitSwapPulse = 0;
     this.gameOver = false;
+    this.paused = false;
+    this.showHelp = true;
     this.lastTime = undefined;
-    this.statusNode.textContent = "Press Space or click the canvas to switch orbit.";
+    this.pauseButton.textContent = "Pause";
+    this.statusNode.textContent = "Space/click swaps orbit. P pauses. H toggles help.";
     this.syncStats();
   }
 
@@ -48,20 +65,41 @@ class OrbitDodger {
       return;
     }
 
+    if (this.paused) return;
+
     this.orbitIndex = this.orbitIndex === 0 ? 1 : 0;
+    this.showHelp = false;
+    this.orbitSwapPulse = 0.35;
+    this.emitParticles(this.getSatellitePosition(), "#57d8ff", 10, 70);
+  }
+
+  togglePause() {
+    if (this.gameOver) return;
+
+    this.paused = !this.paused;
+    this.pauseButton.textContent = this.paused ? "Resume" : "Pause";
+    this.statusNode.textContent = this.paused
+      ? "Paused. Press P or Resume when ready."
+      : "Space/click swaps orbit. P pauses. H toggles help.";
   }
 
   syncStats() {
     this.scoreNode.textContent = Math.floor(this.score).toString();
+    this.levelNode.textContent = this.level.toString();
     this.nearMissNode.textContent = this.nearMisses.toString();
+    this.streakNode.textContent = this.orbStreak.toString();
   }
 
   tick(time) {
     const dt = Math.min((time - (this.lastTime ?? time)) / 1000, 0.033);
     this.lastTime = time;
 
-    if (!this.gameOver) {
+    if (!this.gameOver && !this.paused) {
       this.update(dt);
+    }
+
+    if (!this.paused) {
+      this.updateParticles(dt);
     }
 
     this.draw();
@@ -69,36 +107,49 @@ class OrbitDodger {
   }
 
   update(dt) {
-    this.angle = (this.angle + dt * 1.9) % TAU;
-    this.score += dt * 9;
+    const nextLevel = Math.min(9, 1 + Math.floor(this.score / 250));
+    if (nextLevel > this.level) {
+      this.level = nextLevel;
+      this.statusNode.textContent = `Level ${this.level}: asteroid traffic is getting tighter.`;
+      this.emitParticles(this.center, "#a98bff", 22, 95);
+    }
+
+    this.angle = (this.angle + dt * (1.78 + this.level * 0.08)) % TAU;
+    this.score += dt * (9 + this.level * 1.8);
     this.spawnTimer -= dt;
     this.orbTimer -= dt;
+    this.impactFlash = Math.max(0, this.impactFlash - dt * 1.8);
+    this.nearMissPulse = Math.max(0, this.nearMissPulse - dt * 2.8);
+    this.orbitSwapPulse = Math.max(0, this.orbitSwapPulse - dt * 2.4);
 
     if (this.spawnTimer <= 0) {
       this.spawnAsteroid();
-      this.spawnTimer = randomBetween(0.6, 1.05);
+      this.spawnTimer = randomBetween(Math.max(0.28, 0.64 - this.level * 0.035), Math.max(0.44, 1.06 - this.level * 0.055));
     }
 
     if (this.orbTimer <= 0) {
       this.spawnOrb();
-      this.orbTimer = randomBetween(2, 3.2);
+      this.orbTimer = randomBetween(1.8, 3.15);
     }
 
     const satellite = this.getSatellitePosition();
 
     this.asteroids.forEach((asteroid) => {
       asteroid.angle = (asteroid.angle + asteroid.speed * dt) % TAU;
+      asteroid.rotation += asteroid.spin * dt;
       asteroid.life += dt;
       const asteroidPosition = this.pointOnOrbit(asteroid.angle, this.orbitRadii[asteroid.orbit]);
       const distance = Math.hypot(satellite.x - asteroidPosition.x, satellite.y - asteroidPosition.y);
 
-      if (distance < 18) {
-        this.gameOver = true;
-        this.statusNode.textContent = "Collision! Click Restart or press Space to try again.";
-      } else if (!asteroid.countedNearMiss && distance < 34 && asteroid.orbit === this.orbitIndex) {
+      if (distance < asteroid.size + 8) {
+        this.triggerCollision(asteroidPosition);
+      } else if (!asteroid.countedNearMiss && distance < asteroid.size + 24 && asteroid.orbit === this.orbitIndex) {
         asteroid.countedNearMiss = true;
         this.nearMisses += 1;
-        this.score += 25;
+        this.score += 24 + this.level * 4;
+        this.nearMissPulse = 0.45;
+        this.statusNode.textContent = "Near miss! Thread the gap for a score bonus.";
+        this.emitParticles(asteroidPosition, "#ffbf69", 8, 55);
       }
     });
 
@@ -108,7 +159,10 @@ class OrbitDodger {
       const distance = Math.hypot(satellite.x - orbPosition.x, satellite.y - orbPosition.y);
       if (distance < 20 && orb.orbit === this.orbitIndex) {
         orb.collected = true;
-        this.score += 75;
+        this.orbStreak += 1;
+        this.score += 70 + Math.min(this.orbStreak, 6) * 15;
+        this.statusNode.textContent = `Orb collected! Streak x${this.orbStreak}.`;
+        this.emitParticles(orbPosition, "#75f0a4", 18, 90);
       }
     });
 
@@ -118,10 +172,14 @@ class OrbitDodger {
   }
 
   spawnAsteroid() {
+    const speed = randomBetween(0.46 + this.level * 0.045, 0.84 + this.level * 0.06);
     this.asteroids.push({
       angle: randomBetween(0, TAU),
       orbit: Math.random() > 0.5 ? 1 : 0,
-      speed: randomBetween(-0.9, -0.55),
+      speed: speed * (Math.random() > 0.18 ? -1 : 1),
+      size: randomBetween(10, 14 + this.level * 0.5),
+      spin: randomBetween(-2.2, 2.2),
+      rotation: randomBetween(0, TAU),
       life: 0,
       countedNearMiss: false,
     });
@@ -134,6 +192,47 @@ class OrbitDodger {
       speed: randomBetween(0.25, 0.5),
       collected: false,
     });
+  }
+
+  triggerCollision(point) {
+    if (this.gameOver) return;
+
+    this.gameOver = true;
+    this.paused = false;
+    this.pauseButton.textContent = "Pause";
+    this.impactFlash = 1;
+    this.orbStreak = 0;
+    this.statusNode.textContent = `Collision at level ${this.level}. Press Space or Restart to launch again.`;
+    this.emitParticles(point, "#ff6b8b", 46, 170);
+    this.syncStats();
+  }
+
+  emitParticles(origin, color, amount, speed) {
+    for (let i = 0; i < amount; i += 1) {
+      const angle = randomBetween(0, TAU);
+      const velocity = randomBetween(speed * 0.35, speed);
+      this.particles.push({
+        x: origin.x,
+        y: origin.y,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity,
+        life: randomBetween(0.35, 0.75),
+        maxLife: 0.75,
+        size: randomBetween(1.5, 4),
+        color,
+      });
+    }
+  }
+
+  updateParticles(dt) {
+    this.particles.forEach((particle) => {
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+      particle.vx *= 0.98;
+      particle.vy *= 0.98;
+      particle.life -= dt;
+    });
+    this.particles = this.particles.filter((particle) => particle.life > 0);
   }
 
   getSatellitePosition() {
@@ -149,16 +248,29 @@ class OrbitDodger {
 
   draw() {
     const ctx = this.ctx;
+    const shake = this.impactFlash > 0 ? Math.sin(performance.now() * 0.07) * this.impactFlash * 7 : 0;
+
+    ctx.save();
+    ctx.translate(shake, -shake * 0.45);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.drawSpace();
 
     this.orbitRadii.forEach((radius, index) => {
       ctx.beginPath();
       ctx.arc(this.center.x, this.center.y, radius, 0, TAU);
-      ctx.strokeStyle = index === this.orbitIndex ? "rgba(87, 216, 255, 0.75)" : "rgba(255,255,255,0.16)";
-      ctx.lineWidth = index === this.orbitIndex ? 3 : 1;
+      const isActive = index === this.orbitIndex;
+      ctx.strokeStyle = isActive ? "rgba(87, 216, 255, 0.78)" : "rgba(255,255,255,0.16)";
+      ctx.lineWidth = isActive ? 3 + this.orbitSwapPulse * 4 : 1;
       ctx.stroke();
     });
+
+    if (this.nearMissPulse > 0) {
+      ctx.strokeStyle = `rgba(255, 191, 105, ${this.nearMissPulse})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(this.center.x, this.center.y, this.orbitRadii[this.orbitIndex] + 9, 0, TAU);
+      ctx.stroke();
+    }
 
     const planetGradient = ctx.createRadialGradient(
       this.center.x - 12,
@@ -180,25 +292,48 @@ class OrbitDodger {
       const point = this.pointOnOrbit(orb.angle, this.orbitRadii[orb.orbit]);
       ctx.fillStyle = "#75f0a4";
       ctx.shadowColor = "#75f0a4";
-      ctx.shadowBlur = 16;
+      ctx.shadowBlur = 12 + Math.sin(performance.now() * 0.008) * 5;
       ctx.beginPath();
       ctx.arc(point.x, point.y, 7, 0, TAU);
       ctx.fill();
+      ctx.strokeStyle = "rgba(117, 240, 164, 0.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 11, 0, TAU);
+      ctx.stroke();
       ctx.shadowBlur = 0;
     });
 
     this.asteroids.forEach((asteroid) => {
       const point = this.pointOnOrbit(asteroid.angle, this.orbitRadii[asteroid.orbit]);
+      ctx.save();
+      ctx.translate(point.x, point.y);
+      ctx.rotate(asteroid.rotation);
       ctx.fillStyle = "#ffbf69";
       ctx.beginPath();
-      ctx.moveTo(point.x + 12, point.y);
-      ctx.lineTo(point.x + 2, point.y + 11);
-      ctx.lineTo(point.x - 12, point.y + 5);
-      ctx.lineTo(point.x - 8, point.y - 10);
-      ctx.lineTo(point.x + 7, point.y - 12);
+      ctx.moveTo(asteroid.size, 0);
+      ctx.lineTo(asteroid.size * 0.18, asteroid.size * 0.92);
+      ctx.lineTo(-asteroid.size, asteroid.size * 0.42);
+      ctx.lineTo(-asteroid.size * 0.68, -asteroid.size * 0.82);
+      ctx.lineTo(asteroid.size * 0.58, -asteroid.size);
       ctx.closePath();
       ctx.fill();
+      if (asteroid.countedNearMiss) {
+        ctx.strokeStyle = "rgba(255, 191, 105, 0.75)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.restore();
     });
+
+    this.particles.forEach((particle) => {
+      ctx.globalAlpha = clamp(particle.life / particle.maxLife, 0, 1);
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, TAU);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
 
     const satellite = this.getSatellitePosition();
     ctx.save();
@@ -211,6 +346,18 @@ class OrbitDodger {
     ctx.fillRect(9, -3, 6, 6);
     ctx.restore();
 
+    this.drawHud();
+    ctx.restore();
+
+    if (this.impactFlash > 0) {
+      ctx.fillStyle = `rgba(255, 107, 139, ${this.impactFlash * 0.28})`;
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    if (this.paused || this.showHelp) {
+      this.drawHelpOverlay(this.paused ? "Paused" : "Orbit controls");
+    }
+
     if (this.gameOver) {
       ctx.fillStyle = "rgba(8, 11, 22, 0.68)";
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -221,6 +368,43 @@ class OrbitDodger {
       ctx.font = "500 15px system-ui";
       ctx.fillText("Press Space or Restart to launch again", this.center.x, this.center.y + 22);
     }
+  }
+
+  drawHud() {
+    const ctx = this.ctx;
+    ctx.fillStyle = "rgba(8, 11, 22, 0.58)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(16, 14, 148, 54, 16);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "800 15px system-ui";
+    ctx.textAlign = "left";
+    ctx.fillText(`Level ${this.level}`, 30, 36);
+    ctx.fillStyle = "#9fb0cc";
+    ctx.font = "600 12px system-ui";
+    ctx.fillText(`Streak x${this.orbStreak}  |  H for help`, 30, 55);
+  }
+
+  drawHelpOverlay(title) {
+    const ctx = this.ctx;
+    ctx.fillStyle = "rgba(8, 11, 22, 0.78)";
+    ctx.fillRect(42, 78, this.canvas.width - 84, 190);
+    ctx.strokeStyle = "rgba(87, 216, 255, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(42.5, 78.5, this.canvas.width - 85, 189);
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "800 24px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(title, this.center.x, 116);
+    ctx.font = "600 14px system-ui";
+    ctx.fillStyle = "#9fb0cc";
+    ctx.fillText("Space or click: swap orbit", this.center.x, 152);
+    ctx.fillText("Collect green orbs to build streak bonuses", this.center.x, 178);
+    ctx.fillText("Near misses score bonus points, but collisions end the run", this.center.x, 204);
+    ctx.fillText("P: pause/resume  |  H: hide/show this guide", this.center.x, 230);
   }
 
   drawSpace() {
