@@ -46,12 +46,35 @@
             This is a local-only Slack simulation: it samples pretend channel
             reactions, summarizes team energy, and drafts a safe report.
           </p>
+          <label class="channel-selector" for="testChannel">
+            Test channel
+            <select id="testChannel">
+              <option value="agent-lab">#agent-lab</option>
+              <option value="release-room">#release-room</option>
+              <option value="support-triage">#support-triage</option>
+            </select>
+          </label>
           <div id="emojiCloud" class="emoji-cloud" aria-label="Emoji reaction sample"></div>
+          <div class="report-grid" aria-label="Generated Slack report details">
+            <div>
+              <span class="metric-label">Mood score</span>
+              <strong id="pulseScore">0%</strong>
+            </div>
+            <div>
+              <span class="metric-label">Automation scope</span>
+              <strong id="pulseScope">Read reactions only</strong>
+            </div>
+          </div>
           <div class="pulse-panel">
             <h3 id="pulseTitle">Team weather</h3>
             <p id="pulseSummary"></p>
             <ul id="pulseInsights"></ul>
           </div>
+          <div class="message-preview" aria-label="Fake Slack message preview">
+            <span class="metric-label">Fake message preview</span>
+            <p id="messagePreview"></p>
+          </div>
+          <p class="privacy-note" id="privacyNote"></p>
         </article>
 
         <article class="agent-card aquarium-card">

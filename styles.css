@@ -52,6 +52,19 @@ button:hover {
   transform: translateY(-1px);
 }
 
+select {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 1rem) 50% / 0.45rem 0.45rem no-repeat,
+    rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  padding: 0.65rem 2.1rem 0.65rem 1rem;
+}
+
 canvas {
   display: block;
   width: 100%;
@@ -160,6 +173,18 @@ canvas {
   margin-top: 0;
 }
 
+.channel-selector {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  font-weight: 800;
+  gap: 0.65rem;
+  justify-content: space-between;
+  margin: 1rem 0;
+}
+
 .emoji-cloud {
   display: grid;
   gap: 0.6rem;
@@ -176,6 +201,37 @@ canvas {
   gap: 0.35rem;
   justify-content: center;
   padding: 0.55rem;
+}
+
+.report-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.report-grid > div,
+.message-preview {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 0.8rem;
+}
+
+.metric-label {
+  color: var(--muted);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.report-grid strong {
+  color: var(--text);
+  display: block;
+  font-size: 1rem;
 }
 
 .pulse-panel {
@@ -200,6 +256,25 @@ canvas {
   padding-left: 1.2rem;
 }
 
+.message-preview {
+  margin-top: 0.75rem;
+}
+
+.message-preview p {
+  color: var(--text);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.privacy-note {
+  border-left: 3px solid var(--green);
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  margin: 0.9rem 0 0;
+  padding-left: 0.75rem;
+}
+
 @media (max-width: 900px) {
   .agent-grid {
     grid-template-columns: 1fr;
@@ -219,5 +294,9 @@ canvas {
 
   .emoji-cloud {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-grid {
+    grid-template-columns: 1fr;
   }
 }
