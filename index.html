@@ -24,12 +24,17 @@
               <p class="eyebrow">Agent One</p>
               <h2>Orbit Dodger</h2>
             </div>
-            <button id="restartGame" type="button">Restart</button>
+            <div class="button-group">
+              <button id="pauseGame" type="button">Pause</button>
+              <button id="restartGame" type="button">Restart</button>
+            </div>
           </div>
           <canvas id="orbitCanvas" width="520" height="360" aria-label="Orbit Dodger game"></canvas>
-          <div class="stats-row">
+          <div class="stats-row game-hud">
             <span>Score: <strong id="orbitScore">0</strong></span>
+            <span>Level: <strong id="orbitLevel">1</strong></span>
             <span>Near misses: <strong id="nearMisses">0</strong></span>
+            <span>Orb streak: <strong id="orbStreak">0</strong></span>
             <span id="orbitStatus">Press Space or click the canvas to switch orbit.</span>
           </div>
         </article>
