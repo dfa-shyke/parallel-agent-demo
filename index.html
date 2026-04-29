@@ -88,10 +88,15 @@
               <p class="eyebrow">Agent Three</p>
               <h2>Parallel Pixel Aquarium</h2>
             </div>
-            <button id="toggleSchool" type="button">Schooling Mode</button>
+            <div class="button-group">
+              <button id="toggleSchool" type="button">Schooling Mode</button>
+              <button id="toggleForage" type="button">Forage Mode</button>
+            </div>
           </div>
           <canvas id="aquariumCanvas" width="520" height="360" aria-label="Animated pixel aquarium"></canvas>
           <div class="stats-row">
+            <span>Mode: <strong id="aquariumMode">Free swim</strong></span>
+            <span>Pearls: <strong id="pearlCount">0/8</strong></span>
             <span id="aquariumStatus">Click the tank to scatter the agents.</span>
           </div>
         </article>

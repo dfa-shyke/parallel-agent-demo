@@ -316,6 +316,10 @@ canvas {
     flex-direction: column;
   }
 
+  .button-group {
+    justify-content: flex-start;
+  }
+
   .emoji-cloud {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
