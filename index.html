@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parallel Agent Demo Lab</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <p class="eyebrow">Cursor parallel agent system test</p>
+        <h1>Three tiny agents, one local playground</h1>
+        <p>
+          Agent One pilots a game, Agent Two simulates a safe Slack workflow,
+          and Agent Three runs a playful canvas aquarium.
+        </p>
+      </section>
+
+      <section class="agent-grid" aria-label="Parallel agent demos">
+        <article class="agent-card game-card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Agent One</p>
+              <h2>Orbit Dodger</h2>
+            </div>
+            <button id="restartGame" type="button">Restart</button>
+          </div>
+          <canvas id="orbitCanvas" width="520" height="360" aria-label="Orbit Dodger game"></canvas>
+          <div class="stats-row">
+            <span>Score: <strong id="orbitScore">0</strong></span>
+            <span>Near misses: <strong id="nearMisses">0</strong></span>
+            <span id="orbitStatus">Press Space or click the canvas to switch orbit.</span>
+          </div>
+        </article>
+
+        <article class="agent-card slack-card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Agent Two</p>
+              <h2>Slack Mood Pulse</h2>
+            </div>
+            <button id="refreshPulse" type="button">Refresh Pulse</button>
+          </div>
+          <p>
+            This is a local-only Slack simulation: it samples pretend channel
+            reactions, summarizes team energy, and drafts a safe report.
+          </p>
+          <div id="emojiCloud" class="emoji-cloud" aria-label="Emoji reaction sample"></div>
+          <div class="pulse-panel">
+            <h3 id="pulseTitle">Team weather</h3>
+            <p id="pulseSummary"></p>
+            <ul id="pulseInsights"></ul>
+          </div>
+        </article>
+
+        <article class="agent-card aquarium-card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Agent Three</p>
+              <h2>Parallel Pixel Aquarium</h2>
+            </div>
+            <button id="toggleSchool" type="button">Schooling Mode</button>
+          </div>
+          <canvas id="aquariumCanvas" width="520" height="360" aria-label="Animated pixel aquarium"></canvas>
+          <div class="stats-row">
+            <span id="aquariumStatus">Click the tank to scatter the agents.</span>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>
