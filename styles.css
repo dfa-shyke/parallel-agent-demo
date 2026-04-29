@@ -137,6 +137,13 @@ canvas {
   margin-bottom: 1rem;
 }
 
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .card-header h2 {
   font-size: 1.5rem;
   letter-spacing: -0.03em;
@@ -152,6 +159,23 @@ canvas {
 
 .stats-row strong {
   color: var(--text);
+}
+
+.game-hud {
+  align-items: stretch;
+}
+
+.game-hud span {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+}
+
+.game-hud #orbitStatus {
+  border-radius: 0.85rem;
+  flex: 1 1 100%;
+  line-height: 1.4;
 }
 
 .slack-card > p {
