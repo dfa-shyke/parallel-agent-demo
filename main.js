@@ -239,15 +239,55 @@ class OrbitDodger {
 class SlackMoodPulse {
   constructor() {
     this.emojiCloud = document.querySelector("#emojiCloud");
+    this.channelSelect = document.querySelector("#testChannel");
     this.title = document.querySelector("#pulseTitle");
     this.summary = document.querySelector("#pulseSummary");
     this.insights = document.querySelector("#pulseInsights");
+    this.score = document.querySelector("#pulseScore");
+    this.scope = document.querySelector("#pulseScope");
+    this.preview = document.querySelector("#messagePreview");
+    this.privacy = document.querySelector("#privacyNote");
+    this.channelProfiles = {
+      "agent-lab": {
+        name: "#agent-lab",
+        focus: "prototype chatter",
+        members: 12,
+        range: [2, 16],
+        scoreShift: 2,
+        scope: "Reactions + public thread counts",
+        action: "summarize blockers without quoting private message text",
+        privacy: "Local dry run only: no Slack token, no network call, no member names, and no message bodies leave the browser.",
+      },
+      "release-room": {
+        name: "#release-room",
+        focus: "release readiness",
+        members: 8,
+        range: [3, 13],
+        scoreShift: -3,
+        scope: "Reactions + checklist signals",
+        action: "flag launch risks and ask for one owner per open checklist item",
+        privacy: "Test scope is limited to synthetic release signals; production automations would need explicit channel approval.",
+      },
+      "support-triage": {
+        name: "#support-triage",
+        focus: "customer support load",
+        members: 10,
+        range: [4, 18],
+        scoreShift: -7,
+        scope: "Reactions + queue labels",
+        action: "suggest pairing on high-friction tickets while keeping customer details out",
+        privacy: "Preview uses fake ticket pressure only; customer names, messages, and account details are intentionally excluded.",
+      },
+    };
+
     document.querySelector("#refreshPulse").addEventListener("click", () => this.refresh());
+    this.channelSelect.addEventListener("change", () => this.refresh());
     this.refresh();
   }
 
   refresh() {
-    const reactions = [
+    const profile = this.channelProfiles[this.channelSelect.value];
+    const baseReactions = [
       { emoji: "🎉", label: "celebration", weight: 1.15 },
       { emoji: "🚀", label: "shipping", weight: 1 },
       { emoji: "👀", label: "review", weight: 0.8 },
@@ -260,14 +300,28 @@ class SlackMoodPulse {
       { emoji: "🙌", label: "kudos", weight: 1.1 },
     ].map((reaction) => ({
       ...reaction,
-      count: Math.floor(randomBetween(2, 16) * reaction.weight),
+      count: Math.floor(randomBetween(...profile.range) * reaction.weight),
     }));
 
+    const reactions = this.tuneReactions(baseReactions, profile);
     const top = [...reactions].sort((a, b) => b.count - a.count).slice(0, 3);
     const total = reactions.reduce((sum, reaction) => sum + reaction.count, 0);
     const support = reactions.find((reaction) => reaction.label === "support needed").count;
     const coffee = reactions.find((reaction) => reaction.label === "needs coffee").count;
-    const weather = support > 8 ? "Cloudy with a chance of pairing" : coffee > 8 ? "Caffeinated and curious" : "Bright with shipping momentum";
+    const review = reactions.find((reaction) => reaction.label === "review").count;
+    const positive = reactions
+      .filter((reaction) => ["celebration", "shipping", "unblocked", "high energy", "ideas", "kudos"].includes(reaction.label))
+      .reduce((sum, reaction) => sum + reaction.count, 0);
+    const moodScore = clamp(Math.round(60 + (positive / total) * 42 - ((support + coffee + review) / total) * 24 + profile.scoreShift), 35, 96);
+    const weather =
+      support > 11
+        ? "Cloudy with a chance of pairing"
+        : coffee > 10
+          ? "Caffeinated and curious"
+          : review > 10
+            ? "Focused review window"
+            : "Bright with shipping momentum";
+    const topSignals = top.map((reaction) => `${reaction.emoji} ${reaction.label}`).join(", ");
 
     this.emojiCloud.innerHTML = reactions
       .map(
@@ -277,16 +331,33 @@ class SlackMoodPulse {
       .join("");
 
     this.title.textContent = `Team weather: ${weather}`;
-    this.summary.textContent = `Sampled ${total} pretend reactions from #agent-lab. Top signal: ${top
-      .map((reaction) => `${reaction.emoji} ${reaction.label}`)
-      .join(", ")}.`;
+    this.summary.textContent = `Sampled ${total} pretend reactions from ${profile.name} across ${profile.members} fake teammates. Top signals: ${topSignals}.`;
+    this.score.textContent = `${moodScore}%`;
+    this.scope.textContent = profile.scope;
     this.insights.innerHTML = [
-      `Draft post: "Today's channel energy looks ${weather.toLowerCase()}. Keep the wins moving and pair on anything stuck."`,
-      `Suggested agent action: summarize blockers without quoting private message text.`,
+      `Generated report: ${profile.focus} looks ${weather.toLowerCase()} with a ${moodScore}% confidence pulse.`,
+      `Suggested agent action: ${profile.action}.`,
+      `Scope guard: aggregate reactions only; avoid names, direct messages, and raw message quotes.`,
       `Safe mode: this demo is local-only and does not connect to Slack.`,
     ]
       .map((item) => `<li>${item}</li>`)
       .join("");
+    this.preview.textContent = `:bar_chart: ${profile.name} safe mood pulse: ${weather}. Top signals were ${topSignals}. Next step: ${profile.action}.`;
+    this.privacy.textContent = profile.privacy;
+  }
+
+  tuneReactions(reactions, profile) {
+    const channelBoosts = {
+      "#agent-lab": { ideas: 3, "high energy": 2, kudos: 2 },
+      "#release-room": { review: 4, shipping: 3, unblocked: 2, "support needed": 2 },
+      "#support-triage": { "support needed": 5, "needs coffee": 3, "deep focus": 2, kudos: 1 },
+    };
+    const boosts = channelBoosts[profile.name] ?? {};
+
+    return reactions.map((reaction) => ({
+      ...reaction,
+      count: reaction.count + (boosts[reaction.label] ?? 0),
+    }));
   }
 }
 
