@@ -295,16 +295,25 @@ class PixelAquarium {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.status = document.querySelector("#aquariumStatus");
-    this.schooling = false;
+    this.modeNode = document.querySelector("#aquariumMode");
+    this.pearlNode = document.querySelector("#pearlCount");
+    this.modeButton = document.querySelector("#toggleSchool");
+    this.forageButton = document.querySelector("#toggleForage");
+    this.mode = "free";
+    this.pearlGoal = 8;
+    this.pearlCount = 0;
     this.pointerBurst = { x: canvas.width / 2, y: canvas.height / 2, power: 0 };
-    this.fish = Array.from({ length: 18 }, (_, index) => this.createFish(index));
-    this.bubbles = Array.from({ length: 26 }, () => this.createBubble(true));
+    this.fish = Array.from({ length: 22 }, (_, index) => this.createFish(index));
+    this.bubbles = Array.from({ length: 34 }, () => this.createBubble(true));
+    this.pearls = Array.from({ length: 5 }, () => this.createPearl());
+    this.sparkles = [];
 
-    document.querySelector("#toggleSchool").addEventListener("click", () => {
-      this.schooling = !this.schooling;
-      this.status.textContent = this.schooling
-        ? "Schooling mode: agents are forming PARALLEL."
-        : "Free swim mode: click the tank to scatter the agents.";
+    this.modeButton.addEventListener("click", () => {
+      this.setMode(this.mode === "school" ? "free" : "school");
+    });
+
+    this.forageButton.addEventListener("click", () => {
+      this.setMode(this.mode === "forage" ? "free" : "forage");
     });
 
     this.canvas.addEventListener("click", (event) => {
@@ -314,8 +323,23 @@ class PixelAquarium {
         y: ((event.clientY - rect.top) / rect.height) * this.canvas.height,
         power: 1,
       };
+      this.spawnBubbleBurst(this.pointerBurst.x, this.pointerBurst.y);
+      this.status.textContent = "Bubble ping sent. Fish scatter, then regroup with boid rules.";
     });
 
+    window.addEventListener("keydown", (event) => {
+      const tagName = event.target?.tagName;
+      if (tagName === "INPUT" || tagName === "SELECT" || tagName === "TEXTAREA") return;
+
+      if (event.code === "KeyS") {
+        this.setMode(this.mode === "school" ? "free" : "school");
+      }
+      if (event.code === "KeyF") {
+        this.setMode(this.mode === "forage" ? "free" : "forage");
+      }
+    });
+
+    this.syncStats();
     requestAnimationFrame((time) => this.tick(time));
   }
 
@@ -327,7 +351,9 @@ class PixelAquarium {
       vx: randomBetween(-45, 45),
       vy: randomBetween(-28, 28),
       color: colors[index % colors.length],
-      label: ["A", "B", "C"][index % 3],
+      label: ["plan", "code", "test", "ship"][index % 4],
+      size: randomBetween(0.86, 1.16),
+      wiggle: randomBetween(0, TAU),
       target: this.schoolTarget(index),
     };
   }
@@ -338,6 +364,16 @@ class PixelAquarium {
       y: randomY ? randomBetween(0, this.canvas.height) : this.canvas.height + 12,
       size: randomBetween(2, 6),
       speed: randomBetween(14, 38),
+      wobble: randomBetween(0, TAU),
+    };
+  }
+
+  createPearl() {
+    return {
+      x: randomBetween(44, this.canvas.width - 44),
+      y: randomBetween(64, this.canvas.height - 86),
+      size: randomBetween(4, 7),
+      shimmer: randomBetween(0, TAU),
     };
   }
 
@@ -361,9 +397,36 @@ class PixelAquarium {
       [356, 110],
       [356, 150],
       [420, 190],
+      [420, 150],
+      [462, 110],
+      [462, 150],
+      [462, 190],
     ];
     const [x, y] = textPoints[index % textPoints.length];
     return { x, y };
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    const modeNames = {
+      free: "Free swim",
+      school: "Schooling",
+      forage: "Forage",
+    };
+    const statusText = {
+      free: "Free swim: click the tank to scatter agents. Press S or F for modes.",
+      school: "Schooling mode: agents form PARALLEL while still avoiding crowding.",
+      forage: "Forage mode: agents hunt pearls for the treasure chest. Collect 8.",
+    };
+
+    this.modeButton.setAttribute("aria-pressed", String(mode === "school"));
+    this.forageButton.setAttribute("aria-pressed", String(mode === "forage"));
+    this.modeNode.textContent = modeNames[mode];
+    this.status.textContent = statusText[mode];
+  }
+
+  syncStats() {
+    this.pearlNode.textContent = `${Math.min(this.pearlCount, this.pearlGoal)}/${this.pearlGoal}`;
   }
 
   tick(time) {
@@ -376,13 +439,34 @@ class PixelAquarium {
 
   update(dt) {
     this.pointerBurst.power = Math.max(0, this.pointerBurst.power - dt * 1.6);
+    this.sparkles = this.sparkles
+      .map((sparkle) => ({
+        ...sparkle,
+        x: sparkle.x + sparkle.vx * dt,
+        y: sparkle.y + sparkle.vy * dt,
+        life: sparkle.life - dt,
+      }))
+      .filter((sparkle) => sparkle.life > 0);
 
-    this.fish.forEach((fish) => {
-      if (this.schooling) {
+    this.fish.forEach((fish, index) => {
+      const flock = this.getFlockSteering(fish, index);
+      fish.vx += flock.x * dt;
+      fish.vy += flock.y * dt;
+
+      if (this.mode === "school") {
         fish.vx += (fish.target.x - fish.x) * dt * 0.9;
         fish.vy += (fish.target.y - fish.y) * dt * 0.9;
+      } else if (this.mode === "forage") {
+        const nearest = this.nearestPearl(fish);
+        if (nearest) {
+          const angle = Math.atan2(nearest.pearl.y - fish.y, nearest.pearl.x - fish.x);
+          const pull = clamp(130 - nearest.distance, 32, 130);
+          fish.vx += Math.cos(angle) * pull * dt;
+          fish.vy += Math.sin(angle) * pull * dt;
+        }
       } else {
-        fish.vx += Math.sin((fish.y + performance.now() * 0.02) * 0.02) * dt * 8;
+        fish.vx += Math.sin((fish.y + performance.now() * 0.02 + fish.wiggle) * 0.02) * dt * 12;
+        fish.vy += Math.cos((fish.x + performance.now() * 0.017 + fish.wiggle) * 0.02) * dt * 7;
       }
 
       const burstDistance = Math.hypot(fish.x - this.pointerBurst.x, fish.y - this.pointerBurst.y);
@@ -392,8 +476,14 @@ class PixelAquarium {
         fish.vy += ((fish.y - this.pointerBurst.y) / Math.max(burstDistance, 1)) * force * dt;
       }
 
-      fish.vx = clamp(fish.vx, -85, 85);
-      fish.vy = clamp(fish.vy, -65, 65);
+      const maxSpeed = this.mode === "forage" ? 96 : 82;
+      const speed = Math.hypot(fish.vx, fish.vy);
+      if (speed > maxSpeed) {
+        fish.vx = (fish.vx / speed) * maxSpeed;
+        fish.vy = (fish.vy / speed) * maxSpeed;
+      }
+      fish.vx *= 0.997;
+      fish.vy *= 0.997;
       fish.x += fish.vx * dt;
       fish.y += fish.vy * dt;
 
@@ -401,41 +491,202 @@ class PixelAquarium {
       if (fish.y < 30 || fish.y > this.canvas.height - 30) fish.vy *= -1;
       fish.x = clamp(fish.x, 24, this.canvas.width - 24);
       fish.y = clamp(fish.y, 30, this.canvas.height - 30);
+
+      const pearlIndex = this.pearls.findIndex((pearl) => Math.hypot(fish.x - pearl.x, fish.y - pearl.y) < 18 + pearl.size);
+      if (pearlIndex !== -1) {
+        this.collectPearl(pearlIndex, fish.x, fish.y);
+      }
     });
 
     this.bubbles.forEach((bubble, index) => {
       bubble.y -= bubble.speed * dt;
-      bubble.x += Math.sin((bubble.y + index * 21) * 0.04) * dt * 9;
+      bubble.x += Math.sin((bubble.y + index * 21 + bubble.wobble) * 0.04) * dt * 9;
       if (bubble.y < -10) {
         this.bubbles[index] = this.createBubble();
       }
     });
+
+    this.pearls.forEach((pearl) => {
+      pearl.shimmer = (pearl.shimmer + dt * 3) % TAU;
+    });
+    this.syncStats();
+  }
+
+  getFlockSteering(fish, index) {
+    const steering = { x: 0, y: 0 };
+    const cohesion = { x: 0, y: 0 };
+    const alignment = { x: 0, y: 0 };
+    const separation = { x: 0, y: 0 };
+    let neighbors = 0;
+
+    this.fish.forEach((other, otherIndex) => {
+      if (otherIndex === index) return;
+      const dx = other.x - fish.x;
+      const dy = other.y - fish.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 82) return;
+
+      neighbors += 1;
+      cohesion.x += other.x;
+      cohesion.y += other.y;
+      alignment.x += other.vx;
+      alignment.y += other.vy;
+
+      if (distance < 34) {
+        const strength = (34 - distance) / 34;
+        separation.x -= (dx / Math.max(distance, 1)) * strength;
+        separation.y -= (dy / Math.max(distance, 1)) * strength;
+      }
+    });
+
+    if (neighbors === 0) return steering;
+
+    cohesion.x = cohesion.x / neighbors - fish.x;
+    cohesion.y = cohesion.y / neighbors - fish.y;
+    alignment.x = alignment.x / neighbors - fish.vx;
+    alignment.y = alignment.y / neighbors - fish.vy;
+
+    steering.x = cohesion.x * 0.16 + alignment.x * 0.32 + separation.x * 95;
+    steering.y = cohesion.y * 0.16 + alignment.y * 0.32 + separation.y * 95;
+    return steering;
+  }
+
+  nearestPearl(fish) {
+    return this.pearls.reduce((nearest, pearl) => {
+      const distance = Math.hypot(fish.x - pearl.x, fish.y - pearl.y);
+      if (!nearest || distance < nearest.distance) {
+        return { pearl, distance };
+      }
+      return nearest;
+    }, undefined);
+  }
+
+  collectPearl(index, x, y) {
+    this.pearlCount += 1;
+    this.pearls[index] = this.createPearl();
+    this.sparkles.push(...Array.from({ length: 12 }, () => ({
+      x,
+      y,
+      vx: randomBetween(-34, 34),
+      vy: randomBetween(-38, 18),
+      life: randomBetween(0.35, 0.75),
+      size: randomBetween(1.5, 3.5),
+    })));
+
+    if (this.pearlCount >= this.pearlGoal) {
+      this.status.textContent = "Treasure objective complete. The chest is glowing, but pearls keep spawning.";
+    } else {
+      this.status.textContent = `Pearl secured. ${this.pearlGoal - this.pearlCount} more for the treasure chest.`;
+    }
+  }
+
+  spawnBubbleBurst(x, y) {
+    const burst = Array.from({ length: 8 }, () => ({
+      x: x + randomBetween(-12, 12),
+      y: y + randomBetween(-12, 12),
+      size: randomBetween(2, 5),
+      speed: randomBetween(34, 70),
+      wobble: randomBetween(0, TAU),
+    }));
+    this.bubbles = [...this.bubbles, ...burst].slice(-52);
   }
 
   draw() {
     const ctx = this.ctx;
+    const now = performance.now() * 0.001;
     const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
     gradient.addColorStop(0, "#08233c");
     gradient.addColorStop(1, "#04101e");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+    this.drawCaustics(now);
+    this.drawSand();
+    this.drawTreasure(now);
     this.drawSeaweed();
+    this.pearls.forEach((pearl) => this.drawPearl(pearl));
     this.bubbles.forEach((bubble) => {
       ctx.strokeStyle = "rgba(237, 244, 255, 0.45)";
       ctx.beginPath();
       ctx.arc(bubble.x, bubble.y, bubble.size, 0, TAU);
       ctx.stroke();
     });
+    this.sparkles.forEach((sparkle) => this.drawSparkle(sparkle));
 
     this.fish.forEach((fish) => this.drawFish(fish));
 
-    if (this.schooling) {
+    if (this.mode === "school") {
       ctx.fillStyle = "rgba(237, 244, 255, 0.18)";
       ctx.font = "900 48px system-ui";
       ctx.textAlign = "center";
       ctx.fillText("PARALLEL", this.canvas.width / 2, 290);
     }
+
+    this.drawModeBadge();
+  }
+
+  drawCaustics(now) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "#57d8ff";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 7; i += 1) {
+      const y = 34 + i * 28;
+      ctx.beginPath();
+      for (let x = -20; x <= this.canvas.width + 20; x += 22) {
+        const waveY = y + Math.sin(now * 1.4 + i + x * 0.035) * 5;
+        if (x === -20) {
+          ctx.moveTo(x, waveY);
+        } else {
+          ctx.lineTo(x, waveY);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawSand() {
+    const ctx = this.ctx;
+    ctx.fillStyle = "#0f2438";
+    ctx.beginPath();
+    ctx.moveTo(0, this.canvas.height - 42);
+    ctx.bezierCurveTo(130, this.canvas.height - 62, 274, this.canvas.height - 20, this.canvas.width, this.canvas.height - 48);
+    ctx.lineTo(this.canvas.width, this.canvas.height);
+    ctx.lineTo(0, this.canvas.height);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  drawTreasure(now) {
+    const ctx = this.ctx;
+    const x = this.canvas.width - 118;
+    const y = this.canvas.height - 64;
+    const completeGlow = this.pearlCount >= this.pearlGoal ? 0.45 + Math.sin(now * 5) * 0.16 : 0.18;
+
+    ctx.save();
+    ctx.shadowColor = "#ffbf69";
+    ctx.shadowBlur = 22 * completeGlow;
+    ctx.fillStyle = "#6b351d";
+    ctx.fillRect(x, y + 16, 72, 34);
+    ctx.fillStyle = "#9a5427";
+    ctx.beginPath();
+    ctx.arc(x + 36, y + 18, 36, Math.PI, 0);
+    ctx.lineTo(x + 72, y + 18);
+    ctx.lineTo(x, y + 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#ffbf69";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x + 36, y - 15 * completeGlow + 18);
+    ctx.lineTo(x + 36, y + 50);
+    ctx.stroke();
+    ctx.fillStyle = "#ffbf69";
+    ctx.fillRect(x + 27, y + 28, 18, 12);
+    ctx.restore();
   }
 
   drawSeaweed() {
@@ -451,16 +702,48 @@ class PixelAquarium {
     }
   }
 
+  drawPearl(pearl) {
+    const ctx = this.ctx;
+    const glow = 0.5 + Math.sin(pearl.shimmer) * 0.35;
+    ctx.save();
+    ctx.shadowColor = "#edf4ff";
+    ctx.shadowBlur = 12 + glow * 12;
+    ctx.fillStyle = "#edf4ff";
+    ctx.beginPath();
+    ctx.arc(pearl.x, pearl.y, pearl.size, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(87, 216, 255, 0.8)";
+    ctx.beginPath();
+    ctx.arc(pearl.x - pearl.size * 0.3, pearl.y - pearl.size * 0.25, pearl.size * 0.28, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawSparkle(sparkle) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = clamp(sparkle.life / 0.75, 0, 1);
+    ctx.fillStyle = "#ffbf69";
+    ctx.fillRect(sparkle.x, sparkle.y, sparkle.size, sparkle.size);
+    ctx.restore();
+  }
+
   drawFish(fish) {
     const ctx = this.ctx;
     const facing = fish.vx >= 0 ? 1 : -1;
     ctx.save();
     ctx.translate(fish.x, fish.y);
-    ctx.scale(facing, 1);
+    ctx.scale(facing * fish.size, fish.size);
     ctx.fillStyle = fish.color;
     ctx.beginPath();
     ctx.ellipse(0, 0, 17, 10, 0, 0, TAU);
     ctx.fill();
+    ctx.fillStyle = "rgba(237, 244, 255, 0.35)";
+    ctx.beginPath();
+    ctx.ellipse(-2, 1, 7, 3, -0.2, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = fish.color;
     ctx.beginPath();
     ctx.moveTo(-15, 0);
     ctx.lineTo(-28, -10);
@@ -475,6 +758,20 @@ class PixelAquarium {
     ctx.font = "900 10px system-ui";
     ctx.textAlign = "center";
     ctx.fillText(fish.label, 0, 4);
+    ctx.restore();
+  }
+
+  drawModeBadge() {
+    const ctx = this.ctx;
+    const remaining = Math.max(this.pearlGoal - this.pearlCount, 0);
+    const label = this.mode === "forage" ? `Pearl hunt: ${remaining} left` : "Keys: S school, F forage";
+    ctx.save();
+    ctx.fillStyle = "rgba(4, 16, 30, 0.62)";
+    ctx.fillRect(14, 14, 190, 28);
+    ctx.fillStyle = "#edf4ff";
+    ctx.font = "800 12px system-ui";
+    ctx.textAlign = "left";
+    ctx.fillText(label, 26, 33);
     ctx.restore();
   }
 }

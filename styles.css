@@ -137,6 +137,13 @@ canvas {
   margin-bottom: 1rem;
 }
 
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .card-header h2 {
   font-size: 1.5rem;
   letter-spacing: -0.03em;
@@ -215,6 +222,10 @@ canvas {
   .card-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .button-group {
+    justify-content: flex-start;
   }
 
   .emoji-cloud {
